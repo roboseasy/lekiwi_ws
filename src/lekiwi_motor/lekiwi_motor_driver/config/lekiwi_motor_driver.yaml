@@ -50,7 +50,7 @@ lekiwi_motor_driver_node:
     # 팔 쓰기. false면 팔은 읽기만 한다(쓰기 토픽 · 서비스를 만들지 않는다).
     # lekiwi_bringup이 use_arm:=true(기본)일 때 true로 덮어쓴다. 시작할 때 팔 토크는 건드리지 않는다.
     # 명령은 arm_torque_service로 토크를 켠 뒤에만 쓰고, 끊겨도 모터는 마지막 목표를 유지한다.
-    # arm_* 값은 arm_write_enabled: true일 때만 읽고 검증한다.
+    # arm_* 값은 arm_write_enabled: true일 때만 읽고 검증한다. 단 arm_ids와 wheel_ids가 겹치는지는 바퀴 쓰기만 켜져 있어도 본다.
     arm_write_enabled: false
     arm_ids: [1, 2, 3, 4, 5, 6]     # 쓰기를 허용하는 팔 모터. motor_ids 안에 있고 wheel_ids와 겹치지 않아야 한다
     # [tick] 목표는 그 모터의 마지막 Present_Position ± 이 값 안으로 자른다 (1024 = 90°).

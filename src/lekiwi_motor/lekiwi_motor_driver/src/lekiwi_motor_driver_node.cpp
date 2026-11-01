@@ -233,7 +233,15 @@ void LekiwiMotorDriverNode::InitializeParams()
     wheel_ids_.push_back(static_cast<uint8_t>(wheel_id));
   }
 
-  // 팔 쓰기. 켰을 때만 읽고 검증한다 (팔 쓰기를 끈 설정의 arm_ids가 읽기 전용 시작을 막지 않게).
+  // 바퀴 쓰기는 바퀴를 속도 모드로 바꾼다: 팔 ID가 wheel_ids에 섞이면 그 팔이 계속 돈다. 팔 쓰기를 꺼도 막는다.
+  const auto arm_ids = get_parameter("arm_ids").as_integer_array();
+  for (const int64_t arm_id : arm_ids) {
+    if (is_wheel_write_enabled_ && unique_wheel_ids.count(arm_id) != 0) {
+      throw std::invalid_argument("arm_ids must not overlap wheel_ids");
+    }
+  }
+
+  // 팔 쓰기. 켰을 때만 나머지를 읽고 검증한다 (팔 쓰기를 끈 설정의 arm_ids가 읽기 전용 시작을 막지 않게).
   is_arm_write_enabled_ = get_parameter("arm_write_enabled").as_bool();
   if (!is_arm_write_enabled_) {
     return;
@@ -253,7 +261,6 @@ void LekiwiMotorDriverNode::InitializeParams()
   }
   arm_max_goal_offset_ticks_ = static_cast<int>(arm_max_goal_offset_ticks);
 
-  const auto arm_ids = get_parameter("arm_ids").as_integer_array();
   if (arm_ids.empty()) {
     throw std::invalid_argument("arm_ids must not be empty");
   }
@@ -624,7 +631,7 @@ bool LekiwiMotorDriverNode::EnableWheelTorque(std::string & message)
     return false;
   }
 
-  // 켜기 전에 모든 바퀴가 응답하고, 속도 모드이고, 보호 비트가 꺼져 있는지 지금 다시 읽는다.
+  // 켜기 전에 모든 바퀴가 응답하고, 보호 비트가 꺼져 있고, 속도 모드인지 지금 다시 읽는다.
   for (MotorSlot * slot : MotorSlots(wheel_ids_)) {
     auto & state = slot->state;
     const std::string wheel = "wheel " + std::to_string(state.id) + " (" + state.name + ")";
@@ -632,14 +639,26 @@ bool LekiwiMotorDriverNode::EnableWheelTorque(std::string & message)
       message = "refused: " + wheel + " is not responding";
       return false;
     }
-    if (state.mode != sts3215::kModeVelocity) {
-      message = "refused: " + wheel + " is in mode " + std::to_string(state.mode) +
-        ", not velocity mode (1)";
-      return false;
-    }
     if ((state.status & sts3215::kStatusFaultMask) != 0) {
       message = "refused: " + wheel + " reports " + sts3215::StatusToString(state.status);
       return false;
+    }
+    if (state.mode != sts3215::kModeVelocity) {
+      // 새 킷 · 교체한 모터는 공장값인 위치 모드(0)다. LeRobot LeKiwi.configure 처럼 속도 모드로 바꾼다.
+      // 토크가 꺼진 바퀴만 바꾸고, 아래에서 속도 0을 먼저 쓴 뒤 토크를 켜므로 바뀌는 순간 돌지 않는다.
+      const unsigned int old_mode = state.mode;
+      uint8_t error = 0;
+      if (state.torque_enabled ||
+        !bus_->Write(state.id, sts3215::kAddrOperatingMode, {sts3215::kModeVelocity}, error) ||
+        !ReadConfig(*slot) || state.mode != sts3215::kModeVelocity)
+      {
+        message = "refused: " + wheel + " is in mode " + std::to_string(state.mode) +
+          ", not velocity mode (1), and could not be switched" +
+          (state.torque_enabled ? " (torque is on)" : "");
+        return false;
+      }
+      RCLCPP_WARN(
+        get_logger(), "%s was in mode %u; switched to velocity mode (1)", wheel.c_str(), old_mode);
     }
   }
 

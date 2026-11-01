@@ -1,7 +1,7 @@
 """가상 Feetech 버스: PTY(가짜 시리얼 장치) 위에서 STS3215 9개(팔 1~6, 바퀴 7~9)를 흉내 낸다.
 
 READ에 레지스터 값으로 응답하고, WRITE에 ACK하며, SYNC_WRITE를 적용한다. 노드가 보낸 쓰기를 모두 기록한다.
-fail_next_writes로 정한 WRITE는 기록만 하고 적용 · 응답하지 않는다 (ACK 없음).
+fail_next_writes로 정한 WRITE는 기록만 하고 적용 · 응답하지 않는다 (ACK 없음). is_acknowledged=True면 ACK만 하고 적용하지 않는다.
 reply_delay를 주면 응답마다 그만큼 늦게 답한다 (USB 왕복 · 모터 응답 지연 흉내). READ는 받은 시각과 함께 read_log에 남는다.
 바퀴는 토크가 켜지고 속도 모드이면 Goal_Speed만큼 위치가 움직인다. 팔은 움직이지 않는다 (위치는 시험이 정한다).
 실제 장치를 열지 않는다.
@@ -60,7 +60,7 @@ class FakeStsBus:
 		self.__lock = threading.Lock()
 		self.__registers = {}
 		self.__responsive = {}
-		self.__failing_writes = {}   # (id, address) → 남은 ACK 없는 WRITE 수
+		self.__failing_writes = {}   # (id, address) → (남은 적용하지 않을 WRITE 수, ACK 하는지)
 		self.writes = []   # (instruction, id, address, bytes) 보낸 순서대로
 		self.read_log = []   # (받은 시각 time.monotonic(), id, address) READ 순서대로
 		for motor_id in ARM_IDS + WHEEL_IDS:
@@ -88,10 +88,10 @@ class FakeStsBus:
 		with self.__lock:
 			self.__responsive[motor_id] = is_responsive
 
-	def fail_next_writes(self, motor_id, address, count):
-		"""motor_id의 address로 오는 다음 WRITE count개를 적용하지 않고 응답도 하지 않는다."""
+	def fail_next_writes(self, motor_id, address, count, is_acknowledged=False):
+		"""motor_id의 address로 오는 다음 WRITE count개를 적용하지 않는다. is_acknowledged면 응답(ACK)은 한다."""
 		with self.__lock:
-			self.__failing_writes[(motor_id, address)] = count
+			self.__failing_writes[(motor_id, address)] = (count, is_acknowledged)
 
 	def set_register(self, motor_id, address, value):
 		with self.__lock:
@@ -187,8 +187,11 @@ class FakeStsBus:
 			elif instruction == 0x03:   # WRITE
 				address, data = packet[5], packet[6:-1]
 				self.writes.append((instruction, motor_id, address, bytes(data)))
-				if self.__failing_writes.get((motor_id, address), 0) > 0:
-					self.__failing_writes[(motor_id, address)] -= 1
+				count, is_acknowledged = self.__failing_writes.get((motor_id, address), (0, False))
+				if count > 0:
+					self.__failing_writes[(motor_id, address)] = (count - 1, is_acknowledged)
+					if is_acknowledged:
+						self.__reply(motor_id, b'')
 					return
 				self.__registers[motor_id][address:address + len(data)] = data
 				self.__reply(motor_id, b'')

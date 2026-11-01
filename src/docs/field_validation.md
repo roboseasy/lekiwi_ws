@@ -180,7 +180,7 @@ RViz에서 초기 위치를 주고 가까운 목표 하나를 준다.
 
 | 증상 | 확인 |
 |------|------|
-| `lekiwi/motor/power`가 `refused: wheel N ... not velocity mode` | 바퀴가 속도 모드가 아니다. LeRobot 설정 도구로 맞춘다 |
+| `lekiwi/motor/power`가 `refused: wheel N ... not velocity mode (1), and could not be switched` | 드라이버가 바퀴를 속도 모드로 바꾸지 못했다. 버스를 쓰는 다른 프로그램을 끄고 다시 켠다 |
 | `power true`가 `disable motor power before recovering a latched fault` | 고장이 고정됨. 원인을 확인하고 `ros2 service call /lekiwi/motor/power std_srvs/srv/SetBool "{data: false}"` 후 다시 |
 | `ready`가 true가 되지 않음 | `/lekiwi/motor/states`에서 바퀴가 `online`인지, 드라이버 로그 확인 |
 | 바퀴 방향이 반대 | `robot_profile.yaml`의 `wheel_directions` (또는 ID 순서) |

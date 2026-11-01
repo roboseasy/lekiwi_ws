@@ -55,7 +55,7 @@
 |------|------|------|-------------|------|
 | `lekiwi/motor/power` | `std_srvs/SetBool` | 베이스 컨트롤러 | 조작 창, Nav2 감독, ZMQ 호스트 (세션 시작 true · 끝 false) | true: 바퀴 토크를 켜고 엔코더가 들어오면 `ready=true`. false: 속도 0, 토크 끔, 고장 해제 |
 | `lekiwi/motor/reset_odometry` | `std_srvs/Trigger` | 베이스 컨트롤러 | 사용자 | odom을 원점으로 |
-| `lekiwi/motor/wheel_torque` | `std_srvs/SetBool` | 모터 드라이버 | **베이스 컨트롤러만** | true: 바퀴가 속도 모드인지 확인 → 속도 0 → 토크 켬(ACK 확인). false: 속도 0 → 토크 끔. 팔 ID는 건드리지 않는다 |
+| `lekiwi/motor/wheel_torque` | `std_srvs/SetBool` | 모터 드라이버 | **베이스 컨트롤러만** | true: 바퀴가 속도 모드인지 확인 (토크가 꺼진 바퀴는 아니면 바꾼다) → 속도 0 → 토크 켬(ACK 확인). false: 속도 0 → 토크 끔. 팔 ID는 건드리지 않는다 |
 | `lekiwi/arm/rest` | `std_srvs/Trigger` | 팔로워 팔 (`lekiwi_lerobot`) | 게이트웨이 (bringup 끄기 전) | **부르기 전에 리더 목표(`lekiwi/arm/goal`)를 멈춘다**: 접은 자세 중 이상이 생기면 (걸어 두지 않는 모터 상태 끊김 · 응답 없음도) 접은 자세 모드에서 나오고 다시 들어가지 않으며, 이상이 풀린 뒤 오는 리더 목표를 따라간다. 리더 목표를 무시하고 잰 자세 → 접은 자세(`rest_pose_ticks`, 로봇마다 장비 프로파일 또는 게이트웨이가 쓰는 `~/lekiwi_ws/arm_profile.yaml`에 둔다 (bringup이 장비 프로파일 뒤에 얹는다). 기본은 없음 = 거절. 보정 범위로 자름: lekiwi04 팔꿈치 3190은 편 팔에서 부르면 범위 끝 3094에서 멈추고, 이미 접혀 범위 밖에 있으면 그 자리에 둔다)로 `rest_time_s`(3 s) smoothstep 램프, 한 주기 이동 제한 그대로. `lekiwi/arm/status`가 `resting`(`ramp_progress`) → 모든 관절이 `rest_tolerance_deg`(3°) 안이면 `rested` (램프 뒤 1초 넘게 못 오면 `warnings`에 관절 이름을 적고 `rested`). `rested` 뒤에는 명령을 내지 않는다 (드라이버가 유지). 게이트웨이는 `rested`를 본 뒤 `lekiwi/motor/arm_torque` false를 부른다. 거절(`success: false`, 한국어 이유): 보정 · lerobot을 못 불러옴, `arm_ready` false, 모터 · 레지스터 이상 · 상태 끊김, 접은 자세 없음. `arm_ready` 메시지 · 이상이 오면 접은 자세 모드에서 나온다 |
 | `lekiwi/motor/arm_torque` | `std_srvs/SetBool` | 모터 드라이버 | 게이트웨이 (시작 · 팔 힘 빼기 · 비상 정지), ZMQ 호스트 (세션의 첫 팔 명령 때 true만) | true: 이미 `arm_ready`이고 모든 팔 토크가 켜져 있고 보호 비트가 없으면 아무것도 쓰지 않고 성공 (`arm_ready`도 다시 내지 않는다). 아니면 팔마다 다시 읽어 응답 · 위치 모드(0) · 보호 비트 확인 → 꺼져 있던 팔만 `Goal_Position` = 지금 위치(ACK) → 토크 켬(ACK), 실패한 ID는 한 번 더. 그래도 실패하면 **호출 전에 꺼져 있던 팔만** 다시 끄고(잡고 있던 팔은 그대로) `success: false`와 ID. false: 팔 ID에만 하나씩 토크 끔(ACK, 브로드캐스트 없음), 확인 못 한 ID는 1초마다 다시. 바퀴는 건드리지 않는다 |
 
@@ -90,7 +90,7 @@
 | 바퀴 명령이 3 s 넘게 끊김 | 모터 드라이버 | 바퀴 토크 끔 |
 | 토크가 켜진 바퀴가 응답하지 않음 | 모터 드라이버 | 모든 바퀴 속도 0 → 토크 끔 |
 | 드라이버가 바퀴 토크를 끔 (위 이유 등) | 베이스 컨트롤러 | `states`에서 `torque_enabled=false`를 보면 고장 고정, `ready=false` |
-| 바퀴가 속도 모드가 아니거나 상태 비트(과열 · 과부하 · 과전류 · 전압)가 켜짐 | 모터 드라이버 | 토크를 켜지 않는다 |
+| 바퀴를 속도 모드로 바꾸지 못했거나 상태 비트(과열 · 과부하 · 과전류 · 전압)가 켜짐 | 모터 드라이버 | 토크를 켜지 않는다 |
 | 드라이버 종료 | 모터 드라이버 | 바퀴 토크가 켜져 있었으면 속도 0 → 토크 끔. 팔 토크는 그대로 둔다 (마지막 목표 유지) |
 | Nav2 주행 중 조작 화면(PC RViz 노드 `rviz` · `rviz2`)이 모두 사라짐 | Nav2 감독 도구 | 토크 끔 (`lekiwi/motor/power false`). 화면이 없으면 처음부터 켜지 않는다 |
 | PC ZMQ 명령이 0.5 s 끊김 | ZMQ 호스트 | `cmd_vel` 0 한 번 (베이스 컨트롤러는 0.3 s에 이미 선다). 팔은 그 자리 |

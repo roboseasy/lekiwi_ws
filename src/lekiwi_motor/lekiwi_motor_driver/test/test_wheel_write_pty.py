@@ -210,22 +210,49 @@ def test_command_ignored_while_torque_off(ros_node, bus):
 		driver.stop()
 
 
-def test_enable_refused_when_wheel_not_in_velocity_mode(ros_node, bus):
-	bus.set_register(8, ADDR_MODE, 0)
+def test_enable_switches_position_mode_wheel_to_velocity_mode(ros_node, bus):
+	bus.set_register(8, ADDR_MODE, 0)   # 새 킷 · 교체한 모터의 공장값
 	driver = DriverUnderTest(ros_node, bus)
 	try:
 		assert driver.wait_for_states()
 		result = driver.call_torque(True)
+		assert result.success, result.message
+		assert all(bus.register(motor_id, ADDR_MODE) == 1 for motor_id in WHEEL_IDS)
+		assert all(bus.register(motor_id, ADDR_TORQUE) == 1 for motor_id in WHEEL_IDS)
+		# 8번 모드만 바꾸고 → 속도 0 → 토크 켬. 팔에는 쓰지 않는다
+		writes = driver.writes_after_startup()
+		assert writes[0] == (0x03, 8, ADDR_MODE, b'\x01')
+		assert writes[1][0] == 0x83 and writes[1][2] == ADDR_GOAL_SPEED
+		assert bus.written_ids().isdisjoint(ARM_IDS)
+	finally:
+		output = driver.stop()
+	assert 'wheel 8 (base_back_wheel) was in mode 0; switched to velocity mode (1)' in output
+
+
+@pytest.mark.parametrize('blocker', ['write_unacknowledged', 'write_not_applied', 'torque_on'])
+def test_enable_refused_when_wheel_mode_cannot_be_switched(ros_node, bus, blocker):
+	bus.set_register(8, ADDR_MODE, 0)
+	if blocker != 'torque_on':
+		# write_not_applied: ACK는 왔지만 값이 바뀌지 않았다 → 다시 읽어 확인하는 단계가 잡아야 한다
+		bus.fail_next_writes(8, ADDR_MODE, 1, is_acknowledged=blocker == 'write_not_applied')
+	driver = DriverUnderTest(ros_node, bus)
+	try:
+		assert driver.wait_for_states()
+		if blocker == 'torque_on':
+			bus.set_register(8, ADDR_TORQUE, 1)   # 다른 프로그램이 켰다: 토크가 걸린 채로는 모드를 바꾸지 않는다
+		result = driver.call_torque(True)
 		assert not result.success
-		assert 'velocity mode' in result.message
-		assert all(bus.register(motor_id, ADDR_TORQUE) == 0 for motor_id in WHEEL_IDS)
-		assert driver.writes_after_startup() == []
+		assert 'wheel 8 (base_back_wheel) is in mode 0, not velocity mode (1)' in result.message
+		assert ('(torque is on)' in result.message) == (blocker == 'torque_on')
+		assert bus.register(8, ADDR_MODE) == 0
+		assert all(write[:3] == (0x03, 8, ADDR_MODE) for write in driver.writes_after_startup())
 	finally:
 		driver.stop()
 
 
 def test_enable_refused_on_status_fault(ros_node, bus):
 	bus.set_register(7, ADDR_STATUS, STATUS_OVERHEAT)
+	bus.set_register(7, ADDR_MODE, 0)   # 고장인 바퀴는 모드도 바꾸지 않는다 (보호 비트를 먼저 본다)
 	driver = DriverUnderTest(ros_node, bus)
 	try:
 		assert driver.wait_for_states()
@@ -233,6 +260,7 @@ def test_enable_refused_on_status_fault(ros_node, bus):
 		assert not result.success
 		assert 'overheat' in result.message
 		assert driver.writes_after_startup() == []
+		assert bus.register(7, ADDR_MODE) == 0
 	finally:
 		driver.stop()
 
@@ -671,17 +699,20 @@ def test_arm_holds_without_writes_after_commands_stop(ros_node, bus):
 		driver.stop()
 
 
-def test_arm_ids_overlapping_wheel_ids_rejected_only_with_arm_write(ros_node, bus):
+@pytest.mark.parametrize('is_arm_write_enabled', [True, False])
+def test_arm_ids_overlapping_wheel_ids_rejected_unless_read_only(ros_node, bus, is_arm_write_enabled):
+	# 팔 쓰기를 꺼도 바퀴 쓰기가 켜져 있으면 막는다: 팔(6)이 속도 모드로 바뀌어 계속 돌 수 있다
 	driver = DriverUnderTest(
-		ros_node, bus, is_arm_write_enabled=True, params=['arm_ids:=[1,2,3,4,5,7]'])
+		ros_node, bus, is_arm_write_enabled=is_arm_write_enabled, params=['wheel_ids:=[6,8,9]'])
 	try:
 		assert driver.process.wait(timeout=10.0) != 0
 	finally:
 		output = driver.stop()
 	assert 'arm_ids must not overlap wheel_ids' in output
-	# 팔 쓰기를 끄면 arm_ids를 보지 않는다
+	assert bus.register(6, ADDR_MODE) == 0
+	# 읽기 전용이면 arm_ids를 보지 않는다
 	driver = DriverUnderTest(
-		ros_node, bus, is_arm_write_enabled=False, params=['arm_ids:=[1,2,3,4,5,7]'])
+		ros_node, bus, is_write_enabled=False, params=['wheel_ids:=[6,8,9]'])
 	try:
 		assert driver.wait_for_states()
 		assert driver.process.poll() is None
