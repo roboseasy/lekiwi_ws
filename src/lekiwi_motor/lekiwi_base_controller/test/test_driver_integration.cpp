@@ -564,6 +564,8 @@ TEST_F(BaseControllerDriverTest, DriverRefusingTorqueKeepsMotorNotReady)
 
   ASSERT_TRUE(response.has_value());
   EXPECT_FALSE(response->success);
+  // 끄기 시도의 응답("fake torque off")이 아니라 켜기를 거절한 이유가 그대로 올라온다
+  EXPECT_EQ(response->message, "failed to connect and enable motor power: fake torque on");
   EXPECT_LT(elapsed, 0.9);
   // 켜기 실패 → 속도 0 → 끄기 시도
   EXPECT_EQ(driver_->TorqueRequests(), (std::vector<bool>{true, false}));
@@ -754,6 +756,10 @@ TEST_F(DriverMotorInterfaceTest, WheelOfflineLongerThanTimeoutOrMissingStatesDis
   }
   ASSERT_TRUE(is_disconnected);
   EXPECT_GE(SecondsSince(offline_start), 0.45);
+  // 끊긴 동안 켜기에 실패하면 이유는 끊긴 바퀴를 가리킨다
+  const std::string reason = interface_->PowerFailureReason();
+  EXPECT_EQ(reason.rfind("motor driver link down (", 0), 0u) << reason;
+  EXPECT_NE(reason.find("wheel ids [7] not online"), std::string::npos) << reason;
 
   // 다시 online이면 바로 연결됨
   driver_->SetOffline(7, 0);

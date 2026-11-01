@@ -1,5 +1,6 @@
 #include "lekiwi_base_controller/motor_safety_coordinator.hpp"
 
+#include <string>
 #include <utility>
 
 #include "lekiwi_base_controller/base_controller.hpp"
@@ -194,12 +195,15 @@ std_srvs::srv::SetBool::Response MotorSafetyCoordinator::SetMotorPower(
     motor_interface_.Connect();
   }
   if (!motor_interface_.IsConnected() || !motor_interface_.SetMotorPower(true)) {
+    // 끄기가 이유를 지우므로 먼저 받아 둔다
+    const std::string reason = motor_interface_.PowerFailureReason();
     motor_interface_.Stop();
     (void)motor_interface_.SetMotorPower(false);
     motor_readiness_.OnBackendFault();
     is_recovery_disarmed_ = false;
     response.success = false;
-    response.message = "failed to connect and enable motor power";
+    response.message = "failed to connect and enable motor power" +
+      (reason.empty() ? std::string() : ": " + reason);
     return finish(response);
   }
 

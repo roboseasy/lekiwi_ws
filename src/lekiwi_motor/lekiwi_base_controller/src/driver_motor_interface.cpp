@@ -105,6 +105,8 @@ DriverMotorInterface::DriverMotorInterface(rclcpp::Node & node, DriverMotorConfi
 void DriverMotorInterface::Connect()
 {
   // 버스는 드라이버가 연다. 연결 여부는 states로만 판단한다
+  // 끊겼을 때만 불린다: 그사이 다시 붙어도 옛 토크 실패 이유를 이번 실패 이유로 내지 않게 지운다
+  last_torque_error_.clear();
 }
 
 void DriverMotorInterface::Shutdown() noexcept
@@ -308,12 +310,15 @@ bool DriverMotorInterface::CallWheelTorque(const bool is_enabled)
       return std::max(SteadyClock::duration::zero(), deadline - SteadyClock::now());
     };
   const char * action = is_enabled ? "enable" : "disable";
+  const std::string service_name = torque_client_->get_service_name();
+  last_torque_error_.clear();
 
   try {
     if (!torque_client_->wait_for_service(remaining())) {
       RCLCPP_ERROR(
         logger_, "wheel torque %s failed: service %s is not available within %.2f s",
-        action, torque_client_->get_service_name(), config_.torque_service_timeout);
+        action, service_name.c_str(), config_.torque_service_timeout);
+      last_torque_error_ = "motor driver service " + service_name + " is not available";
       return false;
     }
     auto request = std::make_shared<std_srvs::srv::SetBool::Request>();
@@ -323,23 +328,32 @@ bool DriverMotorInterface::CallWheelTorque(const bool is_enabled)
       torque_client_->remove_pending_request(future);
       RCLCPP_ERROR(
         logger_, "wheel torque %s failed: no response from %s within %.2f s",
-        action, torque_client_->get_service_name(), config_.torque_service_timeout);
+        action, service_name.c_str(), config_.torque_service_timeout);
+      last_torque_error_ = "no response from motor driver service " + service_name;
       return false;
     }
     const auto response = future.get();
     if (!response->success) {
       RCLCPP_ERROR(
         logger_, "wheel torque %s refused by motor driver: %s", action, response->message.c_str());
+      last_torque_error_ = response->message;
       return false;
     }
     RCLCPP_INFO(logger_, "wheel torque %s: %s", action, response->message.c_str());
     return true;
   } catch (const std::exception & error) {
     RCLCPP_ERROR(logger_, "wheel torque %s failed: %s", action, error.what());
+    last_torque_error_ = error.what();
   } catch (...) {
     RCLCPP_ERROR(logger_, "wheel torque %s failed with an unknown error", action);
+    last_torque_error_ = "unknown error";
   }
   return false;
+}
+
+std::string DriverMotorInterface::PowerFailureReason() const
+{
+  return IsConnected() ? last_torque_error_ : "motor driver link down (" + DescribeLink() + ")";
 }
 
 std::string DriverMotorInterface::DescribeLink() const

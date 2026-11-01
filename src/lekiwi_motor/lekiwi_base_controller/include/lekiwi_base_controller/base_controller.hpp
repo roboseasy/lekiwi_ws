@@ -175,6 +175,8 @@ public:
   virtual bool IsConnected() const;
   virtual std::optional<WheelFeedbackSample> ReadWheelFeedback();
   virtual bool SetMotorPower(bool is_enabled);
+  // 마지막 SetMotorPower(true) 가 실패한 이유. 모르면 빈 문자열
+  virtual std::string PowerFailureReason() const {return {};}
   bool IsMotorPowerEnabled() const;
   void WriteWheelSpeeds(const WheelCommand & command);
   void Stop();

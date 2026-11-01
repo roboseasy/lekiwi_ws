@@ -239,8 +239,8 @@ MultiThreadedExecutor 4 스레드: 제어 그룹이 토크 응답을 기다리�
 | 빌드 중 `lekiwi_msgs`를 찾지 못함 | 메시지 패키지를 함께 빌드: `cbs lekiwi_msgs lekiwi_base_controller` |
 | `torque_enable must be false` 로 시작 실패 | 설정 파일의 `torque_enable`을 `false`로. 토크는 `lekiwi/motor/power`로 켠다 |
 | `motor backend: mock (logging only)` | 설정 파일이 적용되지 않음 또는 `motor_backend`/`enable_motor_write` 확인 |
-| power `true`가 `failed to connect and enable motor power` | states가 안 오거나 바퀴가 offline. 드라이버 실행 · `ros2 topic hz /lekiwi/motor/states` 확인 |
-| `wheel torque enable refused by motor driver: ...` | 드라이버가 거절한 이유가 뒤에 나온다 (바퀴 무응답, 속도 모드 아님, 보호 비트) |
+| power `true`가 `failed to connect and enable motor power: <이유>` | 이유가 `motor driver link down (...)` 이면 states가 안 오거나 바퀴가 offline — 드라이버 실행 · `ros2 topic hz /lekiwi/motor/states` 확인. 아니면 드라이버가 토크 켜기를 거절한 이유다 (바퀴 무응답, 보호 비트, 속도 모드로 못 바꿈) |
+| `wheel torque enable refused by motor driver: ...` | 드라이버가 거절한 이유가 뒤에 나온다 (바퀴 무응답, 속도 모드로 못 바꿈, 보호 비트) |
 | `service ... is not available` | 드라이버가 꺼져 있거나 namespace가 다름 |
 | `motor driver link lost (...)` 후 `ready=false` | states 끊김, 바퀴 offline 0.5 s 이상, 또는 `driver reports torque off` (드라이버가 스스로 토크를 끔 — 드라이버 로그에서 이유 확인). 원인을 고친 뒤 power `false` → `true` |
 | power `true`가 `disable motor power before recovering a latched fault` | 고장 고정 상태. power `false`를 먼저 부른다 |

@@ -75,6 +75,8 @@ public:
   // 마지막으로 쓴 메시지보다 header.stamp가 새로운 states가 있을 때만 샘플을 만든다
   std::optional<WheelFeedbackSample> ReadWheelFeedback() override;
   bool SetMotorPower(bool is_enabled) override;
+  // 연결이 끊겼으면 그 상태, 아니면 드라이버 토크 서비스가 돌려준 실패 이유
+  std::string PowerFailureReason() const override;
 
 private:
   void WriteClampedWheelSpeeds(const WheelCommand & command) override;
@@ -116,6 +118,7 @@ private:
   // 제어 그룹에서만 쓴다
   std::optional<int64_t> last_consumed_stamp_nanoseconds_;
   bool is_link_loss_handled_{false};
+  std::string last_torque_error_;   // 마지막 CallWheelTorque 실패 이유 (성공하면 빈 문자열)
 };
 
 }  // namespace lekiwi_base_controller
