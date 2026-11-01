@@ -6,6 +6,7 @@
 
 import json
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -227,6 +228,25 @@ def test_enable_switches_position_mode_wheel_to_velocity_mode(ros_node, bus):
 	finally:
 		output = driver.stop()
 	assert 'wheel 8 (base_back_wheel) was in mode 0; switched to velocity mode (1)' in output
+
+
+def test_enable_switches_every_wheel_while_eeprom_write_delays_replies(ros_node, bus):
+	# lekiwi07 (2026-11-01): 모드는 바뀌는데 EEPROM 저장 중이라 ACK · 바로 읽기가 늦어 시도마다 바퀴 하나씩 거절됐다
+	for motor_id in WHEEL_IDS:
+		bus.set_register(motor_id, ADDR_MODE, 0)
+	bus.set_eeprom_write_time(0.05)
+	driver = DriverUnderTest(ros_node, bus)
+	try:
+		assert driver.wait_for_states()
+		result = driver.call_torque(True)
+		assert result.success, result.message
+		assert all(bus.register(motor_id, ADDR_MODE) == 1 for motor_id in WHEEL_IDS)
+		assert all(bus.register(motor_id, ADDR_TORQUE) == 1 for motor_id in WHEEL_IDS)
+		assert bus.written_ids().isdisjoint(ARM_IDS)
+	finally:
+		output = driver.stop()
+	for motor_id in WHEEL_IDS:
+		assert re.search(rf'wheel {motor_id} \(\w+\) was in mode 0; switched to velocity mode \(1\) in \d+ ms', output)
 
 
 @pytest.mark.parametrize('blocker', ['write_unacknowledged', 'write_not_applied', 'torque_on'])

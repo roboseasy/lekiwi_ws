@@ -2,6 +2,7 @@
 
 READ에 레지스터 값으로 응답하고, WRITE에 ACK하며, SYNC_WRITE를 적용한다. 노드가 보낸 쓰기를 모두 기록한다.
 fail_next_writes로 정한 WRITE는 기록만 하고 적용 · 응답하지 않는다 (ACK 없음). is_acknowledged=True면 ACK만 하고 적용하지 않는다.
+set_eeprom_write_time을 주면 EEPROM 주소(Torque_Enable 앞)에 쓴 뒤 그 시간 동안 그 모터가 ACK도 없이 아무것에도 답하지 않는다.
 reply_delay를 주면 응답마다 그만큼 늦게 답한다 (USB 왕복 · 모터 응답 지연 흉내). READ는 받은 시각과 함께 read_log에 남는다.
 바퀴는 토크가 켜지고 속도 모드이면 Goal_Speed만큼 위치가 움직인다. 팔은 움직이지 않는다 (위치는 시험이 정한다).
 실제 장치를 열지 않는다.
@@ -61,6 +62,8 @@ class FakeStsBus:
 		self.__registers = {}
 		self.__responsive = {}
 		self.__failing_writes = {}   # (id, address) → (남은 적용하지 않을 WRITE 수, ACK 하는지)
+		self.__eeprom_write_time = 0.0   # [s] EEPROM에 저장하는 동안 응답 없음
+		self.__busy_until = {}   # id → time.monotonic() 이 시각까지 응답 없음
 		self.writes = []   # (instruction, id, address, bytes) 보낸 순서대로
 		self.read_log = []   # (받은 시각 time.monotonic(), id, address) READ 순서대로
 		for motor_id in ARM_IDS + WHEEL_IDS:
@@ -92,6 +95,11 @@ class FakeStsBus:
 		"""motor_id의 address로 오는 다음 WRITE count개를 적용하지 않는다. is_acknowledged면 응답(ACK)은 한다."""
 		with self.__lock:
 			self.__failing_writes[(motor_id, address)] = (count, is_acknowledged)
+
+	def set_eeprom_write_time(self, seconds):
+		"""실제 STS3215처럼 EEPROM 쓰기 뒤 seconds 동안 그 모터가 ACK · READ에 답하지 않는다."""
+		with self.__lock:
+			self.__eeprom_write_time = seconds
 
 	def set_register(self, motor_id, address, value):
 		with self.__lock:
@@ -180,6 +188,8 @@ class FakeStsBus:
 				return
 			if motor_id not in self.__registers or not self.__responsive[motor_id]:
 				return
+			if time.monotonic() < self.__busy_until.get(motor_id, 0.0):
+				return
 			if instruction == 0x02:   # READ
 				address, length = packet[5], packet[6]
 				self.read_log.append((time.monotonic(), motor_id, address))
@@ -194,6 +204,9 @@ class FakeStsBus:
 						self.__reply(motor_id, b'')
 					return
 				self.__registers[motor_id][address:address + len(data)] = data
+				if self.__eeprom_write_time and address < ADDR_TORQUE:   # EEPROM: 저장하는 동안 ACK도 없다
+					self.__busy_until[motor_id] = time.monotonic() + self.__eeprom_write_time
+					return
 				self.__reply(motor_id, b'')
 
 	def __reply(self, motor_id, data):

@@ -4,6 +4,7 @@
 #include <cmath>
 #include <set>
 #include <stdexcept>
+#include <thread>
 #include <utility>
 
 #include "lekiwi_motor_driver/sts3215.hpp"
@@ -646,19 +647,33 @@ bool LekiwiMotorDriverNode::EnableWheelTorque(std::string & message)
     if (state.mode != sts3215::kModeVelocity) {
       // 새 킷 · 교체한 모터는 공장값인 위치 모드(0)다. LeRobot LeKiwi.configure 처럼 속도 모드로 바꾼다.
       // 토크가 꺼진 바퀴만 바꾸고, 아래에서 속도 0을 먼저 쓴 뒤 토크를 켜므로 바뀌는 순간 돌지 않는다.
+      // Operating_Mode는 EEPROM이라 저장하는 동안 서보가 ACK · 읽기에 답하지 않는다 (2026-11-01 lekiwi07: 값은 바뀌었는데
+      // 바로 읽기가 10 ms 제한을 넘겨 시도마다 바퀴 하나씩 거절). ACK 대신 다시 읽은 값으로 판단하고 잠시 기다린다.
+      // 바퀴 3개 × 200 ms < 베이스 컨트롤러의 토크 서비스 대기(1 s).
+      constexpr auto kModeSwitchTimeout = std::chrono::milliseconds(200);
+      constexpr auto kModeReadbackInterval = std::chrono::milliseconds(5);
       const unsigned int old_mode = state.mode;
-      uint8_t error = 0;
-      if (state.torque_enabled ||
-        !bus_->Write(state.id, sts3215::kAddrOperatingMode, {sts3215::kModeVelocity}, error) ||
-        !ReadConfig(*slot) || state.mode != sts3215::kModeVelocity)
-      {
+      const auto switch_start = Clock::now();
+      bool is_switched = false;
+      if (!state.torque_enabled) {
+        uint8_t error = 0;
+        (void)bus_->Write(state.id, sts3215::kAddrOperatingMode, {sts3215::kModeVelocity}, error);
+        while (!is_switched && Clock::now() - switch_start < kModeSwitchTimeout) {
+          is_switched = ReadConfig(*slot) && state.mode == sts3215::kModeVelocity;
+          if (!is_switched) {
+            std::this_thread::sleep_for(kModeReadbackInterval);
+          }
+        }
+      }
+      if (!is_switched) {
         message = "refused: " + wheel + " is in mode " + std::to_string(state.mode) +
           ", not velocity mode (1), and could not be switched" +
           (state.torque_enabled ? " (torque is on)" : "");
         return false;
       }
       RCLCPP_WARN(
-        get_logger(), "%s was in mode %u; switched to velocity mode (1)", wheel.c_str(), old_mode);
+        get_logger(), "%s was in mode %u; switched to velocity mode (1) in %.0f ms", wheel.c_str(),
+        old_mode, std::chrono::duration<double, std::milli>(Clock::now() - switch_start).count());
     }
   }
 
