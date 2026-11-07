@@ -1,6 +1,7 @@
 # 노드 · 토픽 · 서비스 · 프레임 계약
 
 이 워크스페이스 패키지들이 서로 주고받는 이름의 기준이다. 이름을 바꿀 때는 이 표를 먼저 고치고, 쓰는 쪽을 모두 함께 고친다.
+흐름을 그림으로 보려면 [architecture.md](architecture.md)를 본다 (이름을 바꾸면 그림도 함께 고친다).
 
 ## 이름 규칙
 
@@ -28,33 +29,36 @@
 
 | 이름 | 타입 | 발행 | 구독 | QoS · 주기 |
 |------|------|------|------|-----------|
-| `lekiwi/motor/states` | `lekiwi_msgs/MotorStateArray` | 모터 드라이버 | 베이스 컨트롤러, 팔로워 팔, 진단 | SensorData, 30 Hz (lerobot LeKiwi 데이터셋 30 fps) |
+| `lekiwi/motor/states` | `lekiwi_msgs/MotorStateArray` | 모터 드라이버 | 베이스 컨트롤러, 팔로워 팔, 게이트웨이, 진단 | SensorData, 30 Hz (lerobot LeKiwi 데이터셋 30 fps) |
 | `lekiwi/motor/wheel_command` | `lekiwi_msgs/WheelCommand` | 베이스 컨트롤러 | 모터 드라이버 | reliable, 깊이 1, 50 Hz (모터 전원이 켜졌을 때만) |
 | `lekiwi/motor/arm_command` | `lekiwi_msgs/ArmCommand` | 팔로워 팔 (`lekiwi_lerobot`) | 모터 드라이버 | reliable, 깊이 1, 약 30 Hz. 팔 ID별 목표 위치 [tick 0~4095]. 드라이버는 받을 때마다 메시지의 모든 ID를 SYNC_WRITE 한 번으로 쓴다 (ACK가 없어 걸러 내지 않는다). 모터마다 마지막 위치 ± `arm_max_goal_offset_ticks`(1024 = 90°) 안으로 자른다. 팔로워는 따라가는 중 리더 목표를 그대로 보낸다 (지난 명령에서 한 번에 `follow_step_deg` 45°까지) |
-| `lekiwi/motor/arm_ready` | `std_msgs/Bool` | 모터 드라이버 | 팔로워 팔, 게이트웨이 | reliable + transient_local, 깊이 1. 바뀔 때마다와 시작할 때 한 번. true = 드라이버가 팔 명령을 받는 중 (`arm_torque` true 성공 뒤). 시작 · `arm_torque` false · 켜기 실패 때 false |
-| `lekiwi/motor/arm_registers` | `lekiwi_msgs/ArmRegisters` | 모터 드라이버 | 팔로워 팔 (보정 파일과 비교) | reliable + transient_local, 깊이 1. 시작할 때 한 번, 응답하지 않던 팔을 나중에 읽으면 다시. 팔 EEPROM의 `Homing_Offset`(부호 비트 11을 푼 값) · 위치 한계 · P/D/I. 읽기만 한다 |
-| `lekiwi/lerobot/state` | `lekiwi_msgs/LerobotState` | 팔로워 팔 (`lekiwi_lerobot`) | PC 데이터셋 기록기 | reliable, 깊이 10, 모터 상태마다 (30 Hz). lerobot LeKiwi `observation.state` 9개: `names` = `arm_*.pos` 6개 (LeRobot 각도 · 그리퍼 0~100) + `x.vel` · `y.vel` [m/s] · `theta.vel` [deg/s] (바퀴 `Present_Velocity`로 lerobot `_wheel_raw_to_body`, odom이 아니다). stamp는 모터 상태의 stamp. 팔 6개 · 바퀴 3개가 그 샘플에서 모두 응답하고, 모터 ID가 lerobot LeKiwi와 같고, 팔 보정이 `arm_registers`와 맞을 때만 |
+| `lekiwi/motor/arm_ready` | `std_msgs/Bool` | 모터 드라이버 | 팔로워 팔, 게이트웨이, ZMQ 호스트 | reliable + transient_local, 깊이 1. 바뀔 때마다와 시작할 때 한 번. true = 드라이버가 팔 명령을 받는 중 (`arm_torque` true 성공 뒤). 시작 · `arm_torque` false · 켜기 실패 때 false |
+| `lekiwi/motor/arm_registers` | `lekiwi_msgs/ArmRegisters` | 모터 드라이버 | 팔로워 팔 (보정 파일과 비교), 게이트웨이 | reliable + transient_local, 깊이 1. 시작할 때 한 번, 응답하지 않던 팔을 나중에 읽으면 다시. 팔 EEPROM의 `Homing_Offset`(부호 비트 11을 푼 값) · 위치 한계 · P/D/I. 읽기만 한다 |
+| `lekiwi/lerobot/state` | `lekiwi_msgs/LerobotState` | 팔로워 팔 (`lekiwi_lerobot`) | ZMQ 호스트 (→ PC 데이터셋 기록기) | reliable, 깊이 10, 모터 상태마다 (30 Hz). lerobot LeKiwi `observation.state` 9개: `names` = `arm_*.pos` 6개 (LeRobot 각도 · 그리퍼 0~100) + `x.vel` · `y.vel` [m/s] · `theta.vel` [deg/s] (바퀴 `Present_Velocity`로 lerobot `_wheel_raw_to_body`, odom이 아니다). stamp는 모터 상태의 stamp. 팔 6개 · 바퀴 3개가 그 샘플에서 모두 응답하고, 모터 ID가 lerobot LeKiwi와 같고, 팔 보정이 `arm_registers`와 맞을 때만 |
 | `cmd_vel` | `geometry_msgs/Twist` | 조작 창 · 게이트웨이 · ZMQ 호스트(세션 active일 때만 발행자가 있다) 또는 Nav2 (`collision_monitor`) 중 하나 | 베이스 컨트롤러 | 기본 |
 | `lekiwi/arm/goal` | `sensor_msgs/JointState` | 게이트웨이, ZMQ 호스트 | 팔로워 팔 | SensorData. 이름 `arm_shoulder_pan` … `arm_gripper` (`.pos` 없음), LeRobot 단위 (몸 관절 [deg], 그리퍼 0~100). 6개가 모두 있어야 받는다 |
+| `lekiwi/arm/state` | `sensor_msgs/JointState` | 팔로워 팔 | 게이트웨이 | reliable, 깊이 10, 모터 상태마다 (30 Hz). 팔로워의 지금 관절 (LeRobot 단위). stamp는 모터 상태의 stamp. 팔 모터가 하나라도 응답하지 않으면 내지 않는다 |
 | `lekiwi/arm/status` | `std_msgs/String` (JSON) | 팔로워 팔 | 게이트웨이, ZMQ 호스트 | reliable, 깊이 10, 30 Hz. `{state, reason, robot_id, diffs, ramp_progress, warnings}` (`lekiwi_lerobot` README) |
 | `lekiwi/zmq_host/status` | `std_msgs/String` (JSON) | ZMQ 호스트 | 게이트웨이 | reliable + transient_local, 깊이 1. 바뀔 때 + 1 Hz. `{session: idle\|waiting\|active\|blocked, reason, rejected_peer, clients, client_ip, estop_unknown}`. `client_ip` = 세션 주인, `rejected_peer` = 3 s 안에 명령을 버린 다른 주소 |
 | `lekiwi/safety/estop_latched` | `std_msgs/Bool` | 게이트웨이 | ZMQ 호스트 | reliable + transient_local, 깊이 1. 비상 정지가 걸려 있으면 true (걸리면 조작 화면 노드가 사라져 노드만으로는 알 수 없다). 발행자가 없으면 ZMQ 호스트는 '모름'으로 보고 거절하지 않는다 (`estop_unknown`) |
-| `odom` | `nav_msgs/Odometry` | 베이스 컨트롤러 | Cartographer, Nav2 | 기본, 50 Hz |
-| `lekiwi/motor/ready` | `std_msgs/Bool` | 베이스 컨트롤러 | 조작 창, Nav2 감독 | reliable + transient_local, 깊이 1 |
+| `odom` | `nav_msgs/Odometry` | 베이스 컨트롤러 | Cartographer, Nav2, Nav2 감독, 게이트웨이 | 기본, 50 Hz |
+| `lekiwi/motor/ready` | `std_msgs/Bool` | 베이스 컨트롤러 | 조작 창, Nav2 감독, ZMQ 호스트, 게이트웨이 | reliable + transient_local, 깊이 1 |
 | `lekiwi/motor/wheel_joint_states` | `sensor_msgs/JointState` | 베이스 컨트롤러 | `joint_state_publisher` | 기본 |
 | `joint_states` | `sensor_msgs/JointState` | `joint_state_publisher` | `robot_state_publisher` | 기본 |
 | `lekiwi/sensor/scan` | `sensor_msgs/LaserScan` | 라이다 | 스캔 필터 | SensorData, 10 Hz, frame `lidar_link` |
-| `lekiwi/sensor/scan_filtered` | `sensor_msgs/LaserScan` | 스캔 필터 | Cartographer, Nav2 | SensorData, frame `lidar_link`. 제외한 빔은 NaN |
+| `lekiwi/sensor/scan_filtered` | `sensor_msgs/LaserScan` | 스캔 필터 | Cartographer, Nav2, Nav2 감독, 게이트웨이 | SensorData, frame `lidar_link`. 제외한 빔은 NaN |
 | `lekiwi/sensor/offset_imu` | `sensor_msgs/Imu` | IMU | Cartographer | 자이로 바이어스만 제거, 자세 없음 |
-| `lekiwi/sensor/lpf_imu`, `lekiwi/sensor/calibrated_imu` | `sensor_msgs/Imu` | IMU | — | 필터 + 자세 |
-| `lekiwi/sensor/front_camera/…`, `lekiwi/sensor/wrist_camera/…` | 영상 | 카메라 | — | frame `front_camera_optical_frame`, `wrist_camera_optical_frame` |
+| `lekiwi/sensor/lpf_imu`, `lekiwi/sensor/calibrated_imu` | `sensor_msgs/Imu` | IMU | 게이트웨이 (`lpf_imu`) | 필터 + 자세 |
+| `lekiwi/sensor/front_camera/…`, `lekiwi/sensor/wrist_camera/…` | `…/image_raw/compressed` (`sensor_msgs/CompressedImage`), `…/camera_info` (`sensor_msgs/CameraInfo`) | 카메라 | ZMQ 호스트, 게이트웨이 (`image_raw/compressed`) | frame `front_camera_optical_frame`, `wrist_camera_optical_frame` |
+
+게이트웨이(`lekiwi_web_operator`)는 `lekiwi/motor/ready` · `lekiwi/motor/arm_ready` · `lekiwi/zmq_host/status`를 늘 구독하고, 나머지는 웹 화면이 그 값을 볼 때만 구독한다. ZMQ 호스트는 `lekiwi/lerobot/state` · `lekiwi/arm/status`를 PC 클라이언트나 세션이 있을 때만, 카메라를 클라이언트가 있을 때만 구독한다.
 
 ## 서비스
 
 | 이름 | 타입 | 서버 | 호출하는 쪽 | 동작 |
 |------|------|------|-------------|------|
-| `lekiwi/motor/power` | `std_srvs/SetBool` | 베이스 컨트롤러 | 조작 창, Nav2 감독, ZMQ 호스트 (세션 시작 true · 끝 false) | true: 바퀴 토크를 켜고 엔코더가 들어오면 `ready=true`. false: 속도 0, 토크 끔, 고장 해제 |
-| `lekiwi/motor/reset_odometry` | `std_srvs/Trigger` | 베이스 컨트롤러 | 사용자 | odom을 원점으로 |
+| `lekiwi/motor/power` | `std_srvs/SetBool` | 베이스 컨트롤러 | 조작 창, Nav2 감독, 게이트웨이, ZMQ 호스트 (세션 시작 true · 끝 false) | true: 바퀴 토크를 켜고 엔코더가 들어오면 `ready=true`. false: 속도 0, 토크 끔, 고장 해제 |
+| `lekiwi/motor/reset_odometry` | `std_srvs/Trigger` | 베이스 컨트롤러 | 사용자, 게이트웨이 | odom을 원점으로 |
 | `lekiwi/motor/wheel_torque` | `std_srvs/SetBool` | 모터 드라이버 | **베이스 컨트롤러만** | true: 바퀴가 속도 모드인지 확인 (토크가 꺼진 바퀴는 아니면 바꾼다) → 속도 0 → 토크 켬(ACK 확인). false: 속도 0 → 토크 끔. 팔 ID는 건드리지 않는다 |
 | `lekiwi/arm/rest` | `std_srvs/Trigger` | 팔로워 팔 (`lekiwi_lerobot`) | 게이트웨이 (bringup 끄기 전) | **부르기 전에 리더 목표(`lekiwi/arm/goal`)를 멈춘다**: 접은 자세 중 이상이 생기면 (걸어 두지 않는 모터 상태 끊김 · 응답 없음도) 접은 자세 모드에서 나오고 다시 들어가지 않으며, 이상이 풀린 뒤 오는 리더 목표를 따라간다. 리더 목표를 무시하고 잰 자세 → 접은 자세(`rest_pose_ticks`, 로봇마다 장비 프로파일 또는 게이트웨이가 쓰는 `~/lekiwi_ws/arm_profile.yaml`에 둔다 (bringup이 장비 프로파일 뒤에 얹는다). 기본은 없음 = 거절. 보정 범위로 자름: lekiwi04 팔꿈치 3190은 편 팔에서 부르면 범위 끝 3094에서 멈추고, 이미 접혀 범위 밖에 있으면 그 자리에 둔다)로 `rest_time_s`(3 s) smoothstep 램프, 한 주기 이동 제한 그대로. `lekiwi/arm/status`가 `resting`(`ramp_progress`) → 모든 관절이 `rest_tolerance_deg`(3°) 안이면 `rested` (램프 뒤 1초 넘게 못 오면 `warnings`에 관절 이름을 적고 `rested`). `rested` 뒤에는 명령을 내지 않는다 (드라이버가 유지). 게이트웨이는 `rested`를 본 뒤 `lekiwi/motor/arm_torque` false를 부른다. 거절(`success: false`, 한국어 이유): 보정 · lerobot을 못 불러옴, `arm_ready` false, 모터 · 레지스터 이상 · 상태 끊김, 접은 자세 없음. `arm_ready` 메시지 · 이상이 오면 접은 자세 모드에서 나온다 |
 | `lekiwi/motor/arm_torque` | `std_srvs/SetBool` | 모터 드라이버 | 게이트웨이 (시작 · 팔 힘 빼기 · 비상 정지), ZMQ 호스트 (세션의 첫 팔 명령 때 true만) | true: 이미 `arm_ready`이고 모든 팔 토크가 켜져 있고 보호 비트가 없으면 아무것도 쓰지 않고 성공 (`arm_ready`도 다시 내지 않는다). 아니면 팔마다 다시 읽어 응답 · 위치 모드(0) · 보호 비트 확인 → 꺼져 있던 팔만 `Goal_Position` = 지금 위치(ACK) → 토크 켬(ACK), 실패한 ID는 한 번 더. 그래도 실패하면 **호출 전에 꺼져 있던 팔만** 다시 끄고(잡고 있던 팔은 그대로) `success: false`와 ID. false: 팔 ID에만 하나씩 토크 끔(ACK, 브로드캐스트 없음), 확인 못 한 ID는 1초마다 다시. 바퀴는 건드리지 않는다 |

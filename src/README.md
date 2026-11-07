@@ -5,6 +5,7 @@ LeKiwi Raspberry Pi(`~/lekiwi_ws`)에서 실행하는 ROS 2 패키지 모음. �
 
 - 대상: Raspberry Pi 4 · Ubuntu 24.04 · ROS 2 Jazzy (PC도 Ubuntu 24.04 · Jazzy)
 - 노드 · 토픽 · 서비스 · 프레임 이름: [docs/interfaces.md](docs/interfaces.md)
+- 노드 · 토픽 · launch · TF 구조 그림 (Mermaid): [docs/architecture.md](docs/architecture.md)
 - 실물 확인 순서와 통과 기준: [docs/field_validation.md](docs/field_validation.md)
 - 카메라 영상 보기: [docs/camera.md](docs/camera.md)
 - 이 저장소 `feature/lekiwi-ros2` 브랜치의 검증된 코드 · 설정 · 안전 처리를 이 구조로 옮겼다
