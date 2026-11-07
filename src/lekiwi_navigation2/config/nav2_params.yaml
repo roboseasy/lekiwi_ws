@@ -48,7 +48,10 @@ bt_navigator:
     robot_base_frame: base_footprint
     odom_topic: /odom
     bt_loop_duration: 10
-    default_server_timeout: 20
+    # [ms] 행동 트리가 planner · controller 액션 서버의 목표 수락을 기다리는 시간. 기본 20 ms 는 Pi 에서 모자라
+    # 1 Hz 다시 계획 때마다 'Timed out while waiting for action server to acknowledge goal request for
+    # compute_path_to_pose' 로 목표가 실패했다 (lekiwi06, 2026-11-07: 경로는 정상인데 6 번 중 5 번 실패)
+    default_server_timeout: 200
     navigators:
     - navigate_to_pose
     - navigate_through_poses
