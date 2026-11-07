@@ -5,7 +5,7 @@
 LeKiwi(옴니휠 3륜 베이스 + SO-101 팔)를 ROS 2 Jazzy로 움직이는 워크스페이스.
 센서 · 모터 · 지도 · 자율 주행 · 조작은 **로봇(Raspberry Pi)에서 돌고, PC는 RViz로 보기만 한다.**
 
-이 문서는 **받기 → 준비 → 빌드**까지다. 빌드가 끝나면 [src/README.md](src/README.md)로 간다 (로봇 켜기 · RViz · 키보드 주행 · 지도 · 자율 주행).
+이 문서는 **받기 → 준비 → 빌드 → 로봇 켜기**까지다. 그다음은 [src/README.md](src/README.md)로 간다 (로봇 켜기 · RViz · 키보드 주행 · 지도 · 자율 주행).
 
 **목차**
 
@@ -15,7 +15,8 @@ LeKiwi(옴니휠 3륜 베이스 + SO-101 팔)를 ROS 2 Jazzy로 움직이는 워
 4. [라이브러리 설치](#4-라이브러리-설치)
 5. [빌드 (CPU 사용 수 제어)](#5-빌드-cpu-사용-수-제어)
 6. [빌드 결과 쓰기 · 확인](#6-빌드-결과-쓰기--확인)
-7. [다음 단계](#7-다음-단계)
+7. [실행 (bringup)](#7-실행-bringup)
+8. [다음 단계](#8-다음-단계)
 
 ---
 
@@ -213,12 +214,47 @@ ros2 pkg executables | grep -c lekiwi   # 로봇: 16
 
 ---
 
-## 7. 다음 단계
+## 7. 실행 (bringup)
 
-**이제 [src/README.md](src/README.md)로 간다.** ros2 명령과 자세한 내용이 모두 거기에 있다.
+### 7-1. 로봇 (Pi): 로봇 켜기
 
-- PC에서 RViz로 로봇 보기, 로봇 켜기 (`ros2 launch lekiwi_bringup bringup.launch.py`), 키보드 주행, 지도 작성, 자율 주행(Nav2)이 순서대로 적혀 있다.
-- src/README.md의 1장 "처음 한 번만 준비 (PC)"는 이 문서의 2 ~ 5장으로 대신했으니 **2장부터** 보면 된다.
+센서 · 모터 드라이버 · 베이스 컨트롤러를 한 번에 켠다. 바퀴 토크는 **꺼진 채로** 시작한다. 이 터미널은 켜 둔다 (끌 때는 `Ctrl+C`).
+
+```bash
+ssh roboseasy@lekiwi04.local                     # PC에서 접속할 때 (번호는 로봇마다 다르다)
+ros2 launch lekiwi_bringup bringup.launch.py
+```
+
+자주 쓰는 인자 (전체 목록은 [src/lekiwi_bringup/README.md](src/lekiwi_bringup/README.md)):
+
+```bash
+ros2 launch lekiwi_bringup bringup.launch.py use_base_controller:=false   # 모터 읽기 전용
+ros2 launch lekiwi_bringup bringup.launch.py use_arm:=false               # 팔은 읽기만 (팔로워 없음)
+ros2 launch lekiwi_bringup bringup.launch.py use_camera:=true             # 카메라 포함
+```
+
+### 7-2. PC: RViz로 보기
+
+6장의 `~/.bashrc` 설정이 된 새 터미널에서 연다. PC는 `lekiwi_bringup`을 빌드하지 않으므로 `rviz2`로 바로 연다.
+
+```bash
+rviz2 -d ~/lekiwi_ws/src/lekiwi_description/rviz/base.rviz
+```
+
+RViz가 비어 보이면 PC에서 연결을 확인한다.
+
+```bash
+ros2 node list | grep lekiwi                     # /lekiwi_lidar_node 등이 보이는지
+ros2 topic hz /lekiwi/sensor/scan_filtered       # 약 10 Hz
+```
+
+---
+
+## 8. 다음 단계
+
+키보드 주행 · 지도 작성 · 자율 주행(Nav2)은 [src/README.md](src/README.md)에 순서대로 적혀 있다.
+
+- src/README.md의 1장 "처음 한 번만 준비 (PC)"와 2장 "매번 하는 순서"는 이 문서의 2 ~ 7장으로 대신했으니 **3장부터** 보면 된다.
 
 | 더 볼 것 | 문서 |
 |---|---|
